@@ -6,6 +6,7 @@ import (
 	"github.com/opentracing/opentracing-go/ext"
 	log "github.com/sirupsen/logrus"
 	"net/http"
+	"time"
 )
 
 //AddRequestIDToContext is a middleware that create a logger with a request id
@@ -29,6 +30,50 @@ func AddLoggerToContext() echo.MiddlewareFunc {
 			})
 			c.Set("logger", logger)
 			return next(c)
+		}
+	}
+}
+
+//Logger is a middleware that logs all requests
+func Logger() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+
+			if c.Path() == "/health" {
+				return next(c)
+			}
+
+			start := time.Now()
+			var err error
+			if err = next(c); err != nil {
+				c.Error(err)
+			}
+			stop := time.Now()
+
+			req := c.Request()
+			res := c.Response()
+			reqSize := req.Header.Get(echo.HeaderContentLength)
+			if reqSize == "" {
+				reqSize = "0"
+			}
+
+			fields := log.Fields{
+				"path":          req.RequestURI,
+				"method":        req.Method,
+				"status":        res.Status,
+				"request_size":  reqSize,
+				"response_size": res.Size,
+				"duration":      stop.Sub(start).String(),
+				"error":         err,
+			}
+
+			if err == nil {
+				fields["error"] = ""
+			}
+			logger := c.Get("logger").(*log.Entry)
+			logger.WithFields(fields).Info("request")
+
+			return err
 		}
 	}
 }

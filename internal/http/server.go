@@ -32,7 +32,8 @@ func NewServer(conf *config.Config, repository timetracking.Repository) *Server 
 	e.Use(AddRequestIDToContext())
 	//add a logger to the context
 	e.Use(AddLoggerToContext())
-
+	//add a logging middleware
+	e.Use(Logger())
 	//trace rest calls
 	e.Use(Tracing())
 
