@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/aleri-godays/timetracking"
+	"github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/ext"
 	log "github.com/sirupsen/logrus"
 )
 import "github.com/asdine/storm/v3"
@@ -39,6 +41,9 @@ func NewStormRepository(db *storm.DB) timetracking.Repository {
 }
 
 func (s *stormDB) Add(ctx context.Context, e *timetracking.Entry) (*timetracking.Entry, error) {
+	span := newSpanFromContext(ctx, "Add")
+	defer span.Finish()
+
 	sp := entryToStormEntry(e)
 	if err := s.db.Save(sp); err != nil {
 		return nil, fmt.Errorf("could not save entry: %w", err)
@@ -47,6 +52,9 @@ func (s *stormDB) Add(ctx context.Context, e *timetracking.Entry) (*timetracking
 }
 
 func (s *stormDB) Get(ctx context.Context, id int) (*timetracking.Entry, error) {
+	span := newSpanFromContext(ctx, "Get")
+	defer span.Finish()
+
 	var sp StormEntry
 	if err := s.db.One("ID", id, &sp); err != nil {
 		if err == storm.ErrNotFound {
@@ -58,6 +66,9 @@ func (s *stormDB) Get(ctx context.Context, id int) (*timetracking.Entry, error) 
 }
 
 func (s *stormDB) Delete(ctx context.Context, id int) error {
+	span := newSpanFromContext(ctx, "Delete")
+	defer span.Finish()
+
 	sp := StormEntry{ID: id}
 	if err := s.db.DeleteStruct(&sp); err != nil {
 		return fmt.Errorf("could not delete entry '%d': %w", id, err)
@@ -66,6 +77,9 @@ func (s *stormDB) Delete(ctx context.Context, id int) error {
 }
 
 func (s *stormDB) Update(ctx context.Context, e *timetracking.Entry) error {
+	span := newSpanFromContext(ctx, "Update")
+	defer span.Finish()
+
 	sp := entryToStormEntry(e)
 	if err := s.db.Update(sp); err != nil {
 		return fmt.Errorf("could not update entry '%d': %w", e.ID, err)
@@ -74,6 +88,9 @@ func (s *stormDB) Update(ctx context.Context, e *timetracking.Entry) error {
 }
 
 func (s *stormDB) All(ctx context.Context) ([]*timetracking.Entry, error) {
+	span := newSpanFromContext(ctx, "All")
+	defer span.Finish()
+
 	var sps []StormEntry
 	if err := s.db.All(&sps); err != nil {
 		return nil, fmt.Errorf("could not fetch all entries: %w", err)
@@ -88,4 +105,12 @@ func (s *stormDB) All(ctx context.Context) ([]*timetracking.Entry, error) {
 	}
 
 	return ps, nil
+}
+
+func newSpanFromContext(ctx context.Context, opName string) opentracing.Span {
+	span, _ := opentracing.StartSpanFromContext(ctx, "db-"+opName)
+	ext.DBInstance.Set(span, "timetracking")
+	ext.DBType.Set(span, "storm")
+	ext.Component.Set(span, "database")
+	return span
 }
